@@ -1,0 +1,116 @@
+
+
+packages <- c("dplyr", "readr", "tidyr", "ggplot2", "shiny")
+lapply(packages, require, character.only = TRUE)
+
+############################################################
+# PART 1 — DOWNLOAD + COMBINE SSA STATE BABY NAMES
+############################################################
+
+zip_url  <- "https://www.ssa.gov/oact/babynames/state/namesbystate.zip"
+zip_file <- "namesbystate.zip"
+
+# download
+download.file(zip_url, zip_file, mode = "wb")
+
+# unzip into folder
+unzip(zip_file, exdir = "state_data")
+
+# load all TXT files
+files <- list.files("state_data", pattern = "\\.TXT$", full.names = TRUE)
+
+# SSA format: state, sex, year, name, count
+babynames_regional <- files %>%
+  lapply(read_csv,
+         col_names = c("state", "sex", "year", "name", "count"),
+         show_col_types = FALSE) %>%
+  bind_rows()
+
+############################################################
+# PART 2 — COMPUTE PROPORTION (prop)
+############################################################
+
+babynames_regional <- babynames_regional %>%
+  group_by(state, year, sex) %>%
+  mutate(prop = count / sum(count)) %>%
+  ungroup()
+
+############################################################
+# PART 3 — COMPUTE GNI CORRECTLY
+# GNI = 1 − |prop_M − prop_F|
+# IMPORTANT FIX:
+# Names that appear only for one sex should NOT be treated as gender-neutral.
+############################################################
+
+gni_data <- babynames_regional %>%
+  select(state, year, name, sex, prop) %>%
+  pivot_wider(
+    names_from = sex,
+    values_from = prop,
+    names_prefix = "prop_"
+  ) %>%
+  mutate(
+    # keep only names that appear for BOTH sexes
+    is_unisex = !is.na(prop_M) & !is.na(prop_F),
+    prop_M = replace_na(prop_M, 0),
+    prop_F = replace_na(prop_F, 0),
+    GNI = ifelse(is_unisex,
+                 1 - abs(prop_M - prop_F),
+                 0)  # names used by only one sex are NOT gender-neutral
+  )
+
+############################################################
+# PART 4 — SUMMARIZE PROPORTION OF GENDER-NEUTRAL NAMES
+############################################################
+
+gni_summary <- gni_data %>%
+  mutate(neutral = GNI >= 0.80) %>%   # threshold can be changed
+  group_by(state, year) %>%
+  summarize(
+    prop_gender_neutral = mean(neutral, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+############################################################
+# PART 5 — SHINY APP
+############################################################
+
+ui <- fluidPage(
+  
+  titlePanel("Gender-Neutral Baby Names Over Time by State"),
+  
+  sidebarLayout(
+    sidebarPanel(
+      selectInput(
+        inputId = "state",
+        label = "Select a State:",
+        choices = sort(unique(gni_summary$state)),
+        selected = "CA"
+      )
+    ),
+    
+    mainPanel(
+      plotOutput("trend_plot")
+    )
+  )
+)
+
+server <- function(input, output) {
+  
+  output$trend_plot <- renderPlot({
+    gni_summary %>%
+      filter(state == input$state) %>%
+      ggplot(aes(x = year, y = prop_gender_neutral)) +
+      geom_line(size = 1.2) +
+      geom_point(size = 1.3) +
+      labs(
+        title = paste("Proportion of Gender-Neutral Names in", input$state),
+        x = "Year",
+        y = "Proportion Gender-Neutral Names"
+      ) +
+      theme_minimal(base_size = 15)
+  })
+}
+
+shinyApp(ui = ui, server = server)
+
