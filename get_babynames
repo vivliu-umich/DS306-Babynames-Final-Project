@@ -1,0 +1,11 @@
+unzip(zip_file, exdir = "state_data")
+
+files <- list.files("state_data", pattern = "\\.TXT$", full.names = TRUE)
+ 
+ babynames_regional <- files %>%
+     lapply(readr::read_csv,
+            col_names = c("state", "sex", "year", "name", "count"),
+            show_col_types = FALSE) %>%
+     dplyr::bind_rows()
+                                                        
+ saveRDS(babynames_regional, "babynames_regional.rds")
