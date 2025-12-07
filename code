@@ -1,3 +1,4 @@
+
 library(readr)
 library(dplyr)
 library(shiny)
@@ -7,28 +8,7 @@ library(tidyverse)
 library(broom)
 library(DT)
 
-############################################################
-# PART 1 — DOWNLOAD + COMBINE SSA STATE BABY NAMES
-############################################################
-
-zip_url  <- "https://www.ssa.gov/oact/babynames/state/namesbystate.zip"
-zip_file <- "namesbystate.zip"
-
-# download
-download.file(zip_url, zip_file, mode = "wb")
-
-# unzip into folder
-unzip(zip_file, exdir = "state_data")
-
-# load all TXT files
-files <- list.files("state_data", pattern = "\\.TXT$", full.names = TRUE)
-
-# SSA format: state, sex, year, name, count
-babynames_regional <- files %>%
-  lapply(read_csv,
-         col_names = c("state", "sex", "year", "name", "count"),
-         show_col_types = FALSE) %>%
-  bind_rows()
+babynames_regional <- readRDS("babynames_regional.rds")
 
 ############################################################
 # PART 2 — COMPUTE PROPORTION (prop)
@@ -214,3 +194,4 @@ server <- function(input, output) {
   })
 }
 shinyApp(ui = ui, server = server)
+
